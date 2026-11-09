@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Read custom package categories in `Pipfile.lock` (such as `[docs]` or `[tests]`), not just `default` and `develop`. (#59, thanks [@chiragjangiir](https://github.com/chiragjangiir))
+- Read Rye and uv requirements lockfiles (`requirements.lock`, `requirements-dev.lock`), and the pre-commit hook runs when they change. (#61, thanks [@chiragjangiir](https://github.com/chiragjangiir))
 - `--pyodide-lock` refuses plain `http://` URLs (a lockfile fetched without TLS could be changed to mark anything as bundled), names the URL when a fetch fails, and no longer counts test bundles such as `aiohttp-tests` (shipped as `.tar`/`.zip`, not wheels) as bundled packages. (#68, thanks [@SatriaBagusNurhadianto](https://github.com/SatriaBagusNurhadianto))
 
 ## 0.6.0 (2026-11-09)
