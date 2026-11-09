@@ -253,3 +253,39 @@ def test_marker_values_with_quotes_are_not_misread(monkeypatch):
     monkeypatch.setattr(Value, "serialize", lambda self: f'"{self.value}"')
     (lin,) = build_targets(["3.13"], ["linux-x86_64"])
     assert marker_holds("""sys_platform != 'x" and sys_platform == "win32'""", lin)
+
+
+def test_explain_plain_linux_wheel_on_musl_and_ordering():
+    from wheelgap.check import explain, rejection
+
+    (musl,) = build_targets(["3.13"], ["musl-armv7l"])
+    assert rejection("grpcio-1.85.1-cp313-cp313-linux_armv7l.whl", musl) == (
+        "linux_armv7l is a plain Linux (glibc) build; wheelgap only counts musllinux wheels for musl"
+    )
+    files = ["x-1-cp313-abi3-macosx_11_0_universal2.whl", "x-1-cp313-cp313-linux_armv7l.whl"]
+    # The same-arch Linux wheel comes first; a macOS universal2 wheel isn't "same arch" on Linux.
+    assert [f for f, _ in explain(files, musl)][0] == "x-1-cp313-cp313-linux_armv7l.whl"
+
+
+def test_mobile_explain_reasons_and_sdists():
+    from wheelgap.check import rejection
+
+    (ios,) = build_targets(["3.13"], ["ios"])
+    (android,) = build_targets(["3.13"], ["android"])
+    assert rejection("x-1-cp313-cp313-ios_15_0_arm64_iphoneos.whl", ios) == (
+        "ios_15_0_arm64_iphoneos needs iOS 15.0, newer than 13.0 (--ios)"
+    )
+    assert rejection("x-1-cp313-cp313-android_26_arm64_v8a.whl", android) == (
+        "android_26_arm64_v8a needs Android API level 26, newer than 24 (--android-api)"
+    )
+    assert rejection("x-1-cp313-cp313-ios_11_0_arm64_iphoneos.whl", ios) == (
+        "ios_11_0_arm64_iphoneos is older than iOS 12.0, the oldest pip accepts"
+    )
+    assert rejection("x-1-cp313-cp313-ios_12_10_arm64_iphoneos.whl", ios) == (
+        "ios_12_10_arm64_iphoneos isn't one of the iOS versions pip tries for 13.0 (x.0 to x.9 of each older release)"
+    )
+    assert rejection("x-1-cp313-cp313-android_15_arm64_v8a.whl", android) == (
+        "android_15_arm64_v8a is older than API level 16, the oldest pip accepts"
+    )
+    # Mobile installs can't build sdists, so an sdist alone is "can't install", not "from source".
+    assert status_for(["x-1.0.tar.gz"], ios) is Status.MISSING

@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
     _Value = _Variable = None  # type: ignore[assignment,misc]
 
 from .sources import Edge, Package, Source
-from .targets import PLATFORMS, Target
+from .targets import ANDROID_FLOOR, IOS_FLOOR, PLATFORMS, Target
 
 
 class Status(StrEnum):
@@ -116,18 +116,34 @@ _LIBC = {"manylinux": "glibc", "musllinux": "musl", "macosx": "macOS"}
 
 
 _WASM_RE = re.compile(r"^(?:pyodide|pyemscripten|emscripten)_[0-9_]+_wasm32$")
+_IOS_RE = re.compile(r"^ios_(\d+)_(\d+)_(.+)$")
+_ANDROID_RE = re.compile(r"^android_(\d+)_(.+)$")
 
 
 def _platform_reason(plat: str, target: Target) -> str:
     family, arch = PLATFORMS[target.platform]
     if family == "pyodide" and _WASM_RE.match(plat):
         return f"{plat} is for a different Pyodide ABI than Python {target.python}"
+    if family == "ios" and (m := _IOS_RE.match(plat)) and m.group(3) == arch:
+        need = (int(m.group(1)), int(m.group(2)))
+        have = ".".join(map(str, target.ios))
+        if need < IOS_FLOOR:
+            return f"{plat} is older than iOS 12.0, the oldest pip accepts"
+        if need > target.ios:
+            return f"{plat} needs iOS {need[0]}.{need[1]}, newer than {have} (--ios)"
+        return f"{plat} isn't one of the iOS versions pip tries for {have} (x.0 to x.9 of each older release)"
+    if family == "android" and (m := _ANDROID_RE.match(plat)) and m.group(2) == arch:
+        if int(m.group(1)) < ANDROID_FLOOR:
+            return f"{plat} is older than API level {ANDROID_FLOOR}, the oldest pip accepts"
+        return f"{plat} needs Android API level {m.group(1)}, newer than {target.android_api} (--android-api)"
     m = _PLAT_RE.match(plat)
     if m:
         kind, major, minor, wheel_arch = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
     elif plat.startswith("manylinux") and "_" in plat:  # manylinux2014_aarch64 and friends
         legacy, wheel_arch = plat.split("_", 1)
         kind, (major, minor) = "manylinux", _LEGACY_GLIBC.get(legacy, (0, 0))
+    elif plat == f"linux_{arch}" and family == "musllinux":
+        return f"{plat} is a plain Linux (glibc) build; wheelgap only counts musllinux wheels for musl"
     else:
         return f"{plat} doesn't match {target.platform}"
     same_arch = wheel_arch == arch or (kind == "macosx" and wheel_arch == "universal2")
@@ -177,6 +193,8 @@ _OS_PREFIX: dict[str, tuple[str, ...]] = {
     "macos": ("macosx",),
     "windows": ("win",),
     "pyodide": ("pyodide_", "pyemscripten_", "emscripten_"),
+    "ios": ("ios_",),
+    "android": ("android_",),
 }
 
 
@@ -187,12 +205,12 @@ def _closeness(filename: str, target: Target) -> tuple[int, int, str]:
     except InvalidWheelFilename:
         return (3, 99, filename)
     platforms = {t.platform for t in wheel}
-    arch = PLATFORMS[target.platform][1]
+    family, arch = PLATFORMS[target.platform]
     if "any" in platforms or platforms & set(target.platform_tags()):
         group = 0
-    elif any(p.endswith((arch, "universal2")) for p in platforms):
+    elif any(p.endswith(arch) or (p.endswith("universal2") and family == "macos") for p in platforms):
         group = 1
-    elif any(p.startswith(_OS_PREFIX[PLATFORMS[target.platform][0]]) for p in platforms):
+    elif any(p.startswith(_OS_PREFIX[family]) for p in platforms):
         group = 2
     else:
         group = 3
