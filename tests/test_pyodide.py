@@ -155,6 +155,14 @@ def test_lock_from_pyproject(capsys, fake_pypi, lock, tmp_path, monkeypatch):
     assert code == 0
 
 
+@pytest.mark.parametrize("scheme", ["http", "HTTP"])
+def test_plain_http_lock_from_pyproject_is_refused(capsys, fake_pypi, tmp_path, monkeypatch, scheme):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(f'[tool.wheelgap]\npyodide-lock = "{scheme}://cdn.example/lock.json"\n')
+    code, _, err = run(capsys, "fastlib==2.0.0", "-p", "3.13", "-t", "pyodide")
+    assert code == 2 and "plain http:// URLs are not allowed" in err
+
+
 def test_failed_lookup_is_not_bundled(capsys, fake_pypi, lock):
     # The name is in the lock, but this pinned version isn't on the index: that's a gap, not a pass.
     code, out, _ = run(capsys, "fastlib==9.9", "-p", "3.13", "-t", "pyodide", "--pyodide-lock", lock, "--json")
