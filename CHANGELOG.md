@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `--pyodide-lock` refuses plain `http://` URLs (a lockfile fetched without TLS could be changed to mark anything as bundled), names the URL when a fetch fails, and no longer counts test bundles such as `aiohttp-tests` (shipped as `.tar`/`.zip`, not wheels) as bundled packages. (#68, thanks [@SatriaBagusNurhadianto](https://github.com/SatriaBagusNurhadianto))
+
 ## 0.6.0 (2026-11-09)
 
 New targets for phones and more Linux hardware, and a job summary for the GitHub Action.

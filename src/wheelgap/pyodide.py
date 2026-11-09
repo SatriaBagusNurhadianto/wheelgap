@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import sys
+import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,7 +55,7 @@ def parse_pyodide_lock(data: dict, source: str) -> PyodideLock:
         # .tar/.zip and aren't installable distributions.
         if isinstance(p, dict)
         and p.get("package_type", "package") == "package"
-        and str(p.get("file_name", "")).endswith(".whl")
+        and ("file_name" not in p or str(p["file_name"]).lower().endswith(".whl"))
         and "name" in p
         and "version" in p
     }
@@ -61,18 +63,18 @@ def parse_pyodide_lock(data: dict, source: str) -> PyodideLock:
 
 
 def load_pyodide_lock(spec: str) -> PyodideLock:
-    """Read a pyodide-lock.json from a path, or fetch it when given an http(s) URL."""
-    if spec.startswith("http://"):
+    """Read a pyodide-lock.json from a path, or fetch it when given an https:// URL."""
+    scheme = spec.split("://", 1)[0].lower() if "://" in spec else ""
+    if scheme == "http":
         raise PyodideLockError(f"{spec}: plain http:// URLs are not allowed; use https://")
-    if spec.startswith("https://"):
+    if scheme == "https":
         from .pypi import fetch_json
 
         try:
             data = fetch_json(spec)
-        except Exception as e:  # noqa: BLE001
-            code = getattr(e, "code", None)
-            if code is not None:
-                raise PyodideLockError(f"couldn't fetch {spec}: HTTP {code}") from None
+        except urllib.error.HTTPError as e:
+            raise PyodideLockError(f"couldn't fetch {spec}: HTTP {e.code}") from None
+        except (OSError, http.client.HTTPException, ValueError) as e:
             raise PyodideLockError(f"couldn't fetch {spec}: {e}") from None
     else:
         try:
