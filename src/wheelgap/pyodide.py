@@ -74,6 +74,8 @@ def load_pyodide_lock(spec: str) -> PyodideLock:
             data = fetch_json(spec)
         except urllib.error.HTTPError as e:
             raise PyodideLockError(f"couldn't fetch {spec}: HTTP {e.code}") from None
+        except urllib.error.URLError as e:
+            raise PyodideLockError(f"couldn't fetch {spec}: {e.reason}") from None
         except (OSError, http.client.HTTPException, ValueError) as e:
             raise PyodideLockError(f"couldn't fetch {spec}: {e}") from None
     else:
