@@ -48,18 +48,32 @@ def parse_pyodide_lock(data: dict, source: str) -> PyodideLock:
     bundled = {
         str(canonicalize_name(p["name"])): str(p["version"])
         for p in packages.values()
-        # Also listed: CPython stdlib modules, shared libraries and test bundles, which aren't PyPI packages.
-        if isinstance(p, dict) and p.get("package_type", "package") == "package" and "name" in p and "version" in p
+        # Only real installable wheels. CPython stdlib modules and shared libraries
+        # are filtered by package_type; test bundles (aiohttp-tests, ...) ship as
+        # .tar/.zip and aren't installable distributions.
+        if isinstance(p, dict)
+        and p.get("package_type", "package") == "package"
+        and str(p.get("file_name", "")).endswith(".whl")
+        and "name" in p
+        and "version" in p
     }
     return PyodideLock(source, str(info.get("version", "?")), (major, minor), abi, bundled)
 
 
 def load_pyodide_lock(spec: str) -> PyodideLock:
     """Read a pyodide-lock.json from a path, or fetch it when given an http(s) URL."""
-    if spec.startswith(("http://", "https://")):
+    if spec.startswith("http://"):
+        raise PyodideLockError(f"{spec}: plain http:// URLs are not allowed; use https://")
+    if spec.startswith("https://"):
         from .pypi import fetch_json
 
-        data = fetch_json(spec)
+        try:
+            data = fetch_json(spec)
+        except Exception as e:  # noqa: BLE001
+            code = getattr(e, "code", None)
+            if code is not None:
+                raise PyodideLockError(f"couldn't fetch {spec}: HTTP {code}") from None
+            raise PyodideLockError(f"couldn't fetch {spec}: {e}") from None
     else:
         try:
             data = json.loads(Path(spec).read_text(encoding="utf-8"))
